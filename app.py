@@ -1,29 +1,43 @@
 from sanic import Sanic
-from sanic.response import text
-from sanic.config import Config
+from sanic.response import json, text
+import aiohttp
+import os
+import pangea.exceptions as pe
+from pangea.config import PangeaConfig
+from pangea.services import Embargo
+from pangea.tools import logger_set_pangea_config
+from sanic import Sanic
 
-class new_config(Config):
-    FOO = "someshit"
+# Sanic.start_method = "fork"
 
-app = Sanic("__name__", Config=new_config())
+app = Sanic(__name__)
 
-app = Sanic('myapp')
+EMBARGO_TOKEN = os.getenv("EMBARGO_TOKEN")
+embargo = Embargo(token=EMBARGO_TOKEN)
 
-app.config.DB_NAME = 'appdb'
-app.config['DB_USER'] = 'appuser'
-
-db_settings = {
-    'DB_HOST': 'localhost',
-    'DB_NAME': 'appdb',
-    'DB_USER': 'appuser'
-}
-app.config.update(db_settings)
-
-@app.get("/")
-async def hello_world(request) -> object:
+@app.route('/embargo-check/<ip>')
+async def perform_embargo_check(request, ip : str) -> str:
     """
-    This is a sample function that returns "Hello, World!"
-    :param request: request object
-    :return: text saying hello world
+    Perform an embargo check on the given IP address.
+
+    Args:
+        request (Request): The Sanic request object.
+        ip (str): The IP address to check for embargo.
+
+    Returns:
+        str: A JSON string with embargo details or an error message.
     """
-    return text("Hello, world.")
+    # ip = "213.24.238.26"
+    print(f"Checking Embargo IP: {ip}")
+    try:
+        embargo_response = embargo.ip_check(ip=ip)
+        print(f"Response: {embargo_response.result}")
+        return text(str(embargo_response))
+    except pe.PangeaAPIException as e:
+        print(f"Embargo Request Error: {e.response.summary}")
+        for err in e.errors:
+            print(f"\t{err.detail} \n")
+
+if __name__ == "__main__":
+    app.run(single_process=True, port=5500)
+
